@@ -325,58 +325,67 @@ CREATE PROCEDURE manager_manage_stores(
 )
 BEGIN
 -- Type solution below
-	drop table if exists manager_manage_stores_result;
-    create table manager_manage_stores_result(Storename varchar(40), Address varchar(200), orders varchar(500), employees varchar(500), total varchar(500));
+IF i_mgr_username in (SELECT Username FROM Manager) THEN
+	SET @chain = (SELECT ChainName FROM Manager WHERE Username = i_mgr_username);
+    
+    drop table if exists manager_manage_stores_result1;
+    create table manager_manage_stores_result1(
+    Storename varchar(40), 
+    Address varchar(200), 
+    orders varchar(500), 
+    total varchar(500)
+    );
+    
+    IF i_storeName IS NULL THEN
+    
+    insert into manager_manage_stores_result1
 
-	if i_storeName is not null and i_minTotal is not null and i_maxTotal is not null then
-	insert into manager_manage_stores_result
-    select store.storename, concat(store.street, ", ",store.city, ", ", store.state, " ",store.zipcode) as Address, count(orders.ID) as orders, count(drone_tech.username) as employees, sum(chain_item.Price * contains.quantity) as total
-    from drone_tech join store on drone_tech.storename = store.storename and drone_tech.chainname = store.chainname join drone on drone.dronetech = drone_tech.username join orders on drone.id = orders.droneid join contains on orders.id = contains.orderid 
-    join chain_item on contains.plunumber = chain_item.plunumber join manager on drone_tech.chainname = manager.chainname
-    where i_mgr_username = manager.username and manager.chainname = store.chainname and i_storeName = store.storename and sum(chain_item.Price * contains.quantity) between i_minTotal and i_maxTotal ;
+
+	SELECT s.StoreName as Storename, concat(s.street, " ",s.city, ", ", s.state, " ",s.zipcode) as Address, COUNT(DISTINCT o.ID) as Orders, sum(c.quantity * ci.price) as Total FROM STORE as s 
+    left JOIN drone_tech as t ON s.Storename = t.StoreName AND t.ChainName = @chain -- join drone techs to use for employees
+    left JOIN drone as d ON d.DroneTech = t.Username --  join drones to get drone IDs for orders, connect w username of drone tech
+    left JOIN orders as o ON o.DroneID = d.ID
+    left JOIN contains as c ON o.ID = c.OrderID
+    left JOIN chain_item as ci on c.itemname = ci.chainitemname and c.chainname = ci.chainname
+	where ci.chainname = @chain 
+    GROUP BY t.Storename, Address, t.chainname;
+
+	elseif i_storename in (SELECT storename from store where chainname = @chain) then 
+    insert into manager_manage_stores_result1
+	SELECT s.StoreName as Storename, concat(s.street, " ",s.city, ", ", s.state, " ",s.zipcode) as Address, COUNT(DISTINCT o.ID) as Orders, sum(c.quantity * ci.price) as Total FROM STORE as s 
+    left JOIN drone_tech as t ON s.Storename = t.StoreName AND t.ChainName = @chain -- join drone techs to use for employees
+    left JOIN drone as d ON d.DroneTech = t.Username --  join drones to get drone IDs for orders, connect w username of drone tech
+    left JOIN orders as o ON o.DroneID = d.ID
+    left JOIN contains as c ON o.ID = c.OrderID
+    left JOIN chain_item as ci on c.itemname = ci.chainitemname and c.chainname = ci.chainname
+	where ci.chainname = @chain and t.storename = i_storename 
+    GROUP BY t.Storename, Address, t.chainname ;
+
+end if;
     
-	elseif i_storeName is null and i_minTotal is not null and i_maxTotal is not null then
-	insert into manager_manage_stores_result
-    select store.storename, concat(store.street, ", ",store.city, ", ", store.state, " ",store.zipcode) as Address, count(orders.ID) as orders, count(drone_tech.username) as employees, sum(chain_item.Price * contains.quantity) as total
-    from drone_tech join store on drone_tech.storename = store.storename and drone_tech.chainname = store.chainname join drone on drone.dronetech = drone_tech.username join orders on drone.id = orders.droneid join contains on orders.id = contains.orderid 
-    join chain_item on contains.plunumber = chain_item.plunumber join manager on drone_tech.chainname = manager.chainname
-    where i_mgr_username = manager.username and manager.chainname = store.chainname and sum(chain_item.Price * contains.quantity) between i_minTotal and i_maxTotal;
+	drop table if exists manager_manage_stores_result;
+    create table manager_manage_stores_result(
+    StoreName varchar(40), 
+    Address varchar(200), 
+    Orders varchar(500), 
+    Employees varchar(500),
+    Total varchar(500)
+    );
     
-	elseif i_storeName is not null and i_minTotal is null and i_maxTotal is not null then
-	insert into manager_manage_stores_result
-    select store.storename, concat(store.street, ", ",store.city, ", ", store.state, " ",store.zipcode) as Address, count(orders.ID) as orders, count(drone_tech.username) as employees, sum(chain_item.Price * contains.quantity) as total
-    from drone_tech join store on drone_tech.storename = store.storename and drone_tech.chainname = store.chainname join drone on drone.dronetech = drone_tech.username join orders on drone.id = orders.droneid join contains on orders.id = contains.orderid 
-    join chain_item on contains.plunumber = chain_item.plunumber join manager on drone_tech.chainname = manager.chainname
-    where i_mgr_username = manager.username and manager.chainname = store.chainname and i_storeName = store.storename and sum(chain_item.Price * contains.quantity) < i_maxTotal ;
+    insert into manager_manage_stores_result 
+    select m.storename as Storename , address  as Address, orders as Orders, e.employees AS Employees, Total as Total from manager_manage_stores_result1 as m
+    JOIN (SELECT Count(distinct username)+1 as Employees, storename FROM drone_tech where chainname = @chain and storename in (SELECT s.StoreName as Storename FROM STORE as s 
+    JOIN drone_tech as t ON s.Storename = t.StoreName AND t.ChainName = @chain 
+    JOIN drone as d ON d.DroneTech = t.Username 
+    JOIN orders as o ON o.DroneID = d.ID)
+ group by storename) as e ON m.storename = e.storename
+    where (m.total > i_minTotal or i_minTotal is null) and (m.total < i_maxTotal or i_maxTotal is null);
+  
+END IF;
     
-	elseif i_storeName is not null and i_minTotal is not null and i_maxTotal is null then
-	insert into manager_manage_stores_result
-    select store.storename, concat(store.street, ", ",store.city, ", ", store.state, " ",store.zipcode) as Address, count(orders.ID) as orders, count(drone_tech.username) as employees, sum(chain_item.Price * contains.quantity) as total
-    from drone_tech join store on drone_tech.storename = store.storename and drone_tech.chainname = store.chainname join drone on drone.dronetech = drone_tech.username join orders on drone.id = orders.droneid join contains on orders.id = contains.orderid 
-    join chain_item on contains.plunumber = chain_item.plunumber join manager on drone_tech.chainname = manager.chainname
-    where i_mgr_username = manager.username and manager.chainname = store.chainname and i_storeName = store.storename and sum(chain_item.Price * contains.quantity) > i_minTotal ;
-    
-	elseif i_storeName is null and i_minTotal is not null and i_maxTotal is null then
-	insert into manager_manage_stores_result
-    select store.storename, concat(store.street, ", ",store.city, ", ", store.state, " ",store.zipcode) as Address, count(orders.ID) as orders, count(drone_tech.username) as employees, sum(chain_item.Price * contains.quantity) as total
-    from drone_tech join store on drone_tech.storename = store.storename and drone_tech.chainname = store.chainname join drone on drone.dronetech = drone_tech.username join orders on drone.id = orders.droneid join contains on orders.id = contains.orderid 
-    join chain_item on contains.plunumber = chain_item.plunumber join manager on drone_tech.chainname = manager.chainname
-    where i_mgr_username = manager.username and manager.chainname = store.chainname and sum(chain_item.Price * contains.quantity) > i_minTotal ;
-    
-	elseif i_storeName is null and i_minTotal is null and i_maxTotal is not null then
-	insert into manager_manage_stores_result
-    select store.storename, concat(store.street, ", ",store.city, ", ", store.state, " ",store.zipcode) as Address, count(orders.ID) as orders, count(drone_tech.username) as employees, sum(chain_item.Price * contains.quantity) as total
-    from drone_tech join store on drone_tech.storename = store.storename and drone_tech.chainname = store.chainname join drone on drone.dronetech = drone_tech.username join orders on drone.id = orders.droneid join contains on orders.id = contains.orderid 
-    join chain_item on contains.plunumber = chain_item.plunumber join manager on drone_tech.chainname = manager.chainname
-    where i_mgr_username = manager.username and manager.chainname = store.chainname and sum(chain_item.Price * contains.quantity) < i_maxTotal ;
-    
-    
-    end if;
 -- End of solution
 END //
 DELIMITER ;
-
-
 
 
 
@@ -417,6 +426,41 @@ CREATE PROCEDURE customer_view_order_history(
 BEGIN
 -- Type solution below
 
+
+    
+    
+--     if i_username in (select customerusername from orders) and i_orderid in (select orders.id from orders) then
+--     set 
+--     @total = (select contains.quantity * chain_item.price from contains join chain_item on contains.PLUNumber = chain_item.PLUNumber),
+--     @total_items = (select count(contains.PLUNumber) from contains where i_orderid = OrderID group by orderid),
+--     @date = (select orders.OrderDate from orders where i_orderid = orders.id),
+--     @droneid = (select orders.DroneID from orders where i_orderid = orders.id),
+--     @tech = (select drone.DroneTech from drone join orders on orders.droneid = drone.id where i_orderid = orders.orderid),
+--     @status = (select drone.DroneStatus from drone join orders on orders.droneid = drone.id where i_orderid = orders.orderid);
+--     
+-- 	INSERT INTO customer_view_order_history_result 
+--     values (@total, @total_items, @date, @droneid, @tech, @status);
+--     end if;
+    
+	drop table if exists customer_view_order_history_result;
+    create table customer_view_order_history_result(
+    total_amount varchar(50),
+    total_items int, 
+    orderdate date, 
+    droneID int, 
+    dronetech varchar(40), 
+    orderstatus varchar(40));
+    
+    INSERT INTO customer_view_order_history_result
+    select contains.quantity * chain_item.price, count(contains.PLUNumber), orders.OrderDate, orders.DroneID, drone.DroneTech, drone.DroneStatus 
+    from contains join chain_item on contains.PLUNumber = chain_item.PLUNumber 
+    join Orders on contains.OrderID = orders.ID 
+    join drone on orders.DroneID = drone.ID 
+	where i_username = orders.CustomerUsername and i_orderid = orders.ID
+    group by contains.plunumber,orders.id;
+    
+
+
 -- End of solution
 END //
 DELIMITER ;
@@ -453,20 +497,18 @@ chain_item inner join item on chain_item.chainitemname = item.itemname
 inner join store on chain_item.chainname = store.chainname
 where store.zipcode = (select zipcode from users where i_username = username) and i_chain_name = store.chainname and i_store_name = store.storename);
 
-elseif i_item_type is null then 
+elseif i_item_type = null then 
 insert into customer_view_store_items_result 
 (select chain_item.chainitemname, chain_item.orderlimit from 
 chain_item inner join item on chain_item.chainitemname = item.itemname 
 inner join store on chain_item.chainname = store.chainname
 where store.zipcode = (select zipcode from users where i_username = username) and i_chain_name = store.chainname and i_store_name = store.storename);
 
-else insert into customer_view_store_items_result 
-(select chain_item.chainitemname, chain_item.orderlimit from 
-chain_item inner join item on chain_item.chainitemname = item.itemname 
-inner join store on chain_item.chainname = store.chainname
-where store.zipcode = (select zipcode from users where i_username = username) and i_chain_name = store.chainname and i_store_name = store.storename and i_item_type = item.itemtype;
+else 
+insert into customer_view_store_items_result 
+(select chain_item.chainitemname, chain_item.orderlimit from chain_item inner join item on chain_item.chainitemname = item.itemname inner join store on chain_item.chainname = store.chainname 
+where store.zipcode = (select zipcode from users where i_username = username) and i_chain_name = store.chainname and i_store_name = store.storename and i_item_type = item.itemtype);
 end if;
-
 -- End of solution
 END //
 DELIMITER ;
