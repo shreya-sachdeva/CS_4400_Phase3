@@ -464,7 +464,7 @@ else insert into customer_view_store_items_result
 (select chain_item.chainitemname, chain_item.orderlimit from 
 chain_item inner join item on chain_item.chainitemname = item.itemname 
 inner join store on chain_item.chainname = store.chainname
-where store.zipcode = (select zipcode from users where i_username = username) and i_chain_name = store.chainname and i_store_name = store.storename);
+where store.zipcode = (select zipcode from users where i_username = username) and i_chain_name = store.chainname and i_store_name = store.storename and i_item_type = item.itemtype;
 end if;
 
 -- End of solution
