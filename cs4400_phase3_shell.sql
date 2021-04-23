@@ -442,27 +442,29 @@ create table customer_view_store_items_result(
 if i_item_type = "ALL" then 
 insert into customer_view_store_items_result 
 (select chain_item.chainitemname, chain_item.orderlimit from 
-chain_item join item on chain_item.chainitemname = item.itemname 
-join store on chain_item.chainname = store.chainname
-where store.zipcode = (select zipcode from users where i_username = username) and i_chain_name = store.chainname and i_store_name = store.store_name);
+chain_item inner join item on chain_item.chainitemname = item.itemname 
+inner join store on chain_item.chainname = store.chainname
+where store.zipcode = (select zipcode from users where i_username = username) and i_chain_name = store.chainname and i_store_name = store.storename);
 
 elseif i_item_type = "all" then 
 insert into customer_view_store_items_result 
 (select chain_item.chainitemname, chain_item.orderlimit from 
-chain_item join item on chain_item.chainitemname = item.itemname 
-join store on chain_item.chainname = store.chainname
-where store.zipcode = (select zipcode from users where i_username = username) and i_chain_name = store.chainname and i_store_name = store.store_name);
+chain_item inner join item on chain_item.chainitemname = item.itemname 
+inner join store on chain_item.chainname = store.chainname
+where store.zipcode = (select zipcode from users where i_username = username) and i_chain_name = store.chainname and i_store_name = store.storename);
 
 elseif i_item_type is null then 
 insert into customer_view_store_items_result 
 (select chain_item.chainitemname, chain_item.orderlimit from 
-chain_item join item on chain_item.chainitemname = item.itemname 
-join store on chain_item.chainname = store.chainname
-where store.zipcode = (select zipcode from users where i_username = username) and i_chain_name = store.chainname and i_store_name = store.store_name);
+chain_item inner join item on chain_item.chainitemname = item.itemname 
+inner join store on chain_item.chainname = store.chainname
+where store.zipcode = (select zipcode from users where i_username = username) and i_chain_name = store.chainname and i_store_name = store.storename);
 
 else insert into customer_view_store_items_result 
-(select chain_item.chainitemname, chain_item.orderlimit from chain_item join item on chain_item.chainitemname = item.itemname join store on chain_item.chainname = store.chainname
-where store.zipcode = (select zipcode from users where i_username = username) and i_chain_name = store.chainname and i_store_name = store.store_name);
+(select chain_item.chainitemname, chain_item.orderlimit from 
+chain_item inner join item on chain_item.chainitemname = item.itemname 
+inner join store on chain_item.chainname = store.chainname
+where store.zipcode = (select zipcode from users where i_username = username) and i_chain_name = store.chainname and i_store_name = store.storename);
 end if;
 
 -- End of solution
