@@ -434,6 +434,36 @@ CREATE PROCEDURE customer_view_store_items(
 )
 BEGIN
 -- Type solution below
+drop table if exists customer_view_store_items_result;
+create table customer_view_store_items_result(
+	chainitemname varchar(40),
+    orderlimit int);
+
+if i_item_type = "ALL" then 
+insert into customer_view_store_items_result 
+(select chain_item.chainitemname, chain_item.orderlimit from 
+chain_item join item on chain_item.chainitemname = item.itemname 
+join store on chain_item.chainname = store.chainname
+where store.zipcode = (select zipcode from users where i_username = username) and i_chain_name = store.chainname and i_store_name = store.store_name);
+
+elseif i_item_type = "all" then 
+insert into customer_view_store_items_result 
+(select chain_item.chainitemname, chain_item.orderlimit from 
+chain_item join item on chain_item.chainitemname = item.itemname 
+join store on chain_item.chainname = store.chainname
+where store.zipcode = (select zipcode from users where i_username = username) and i_chain_name = store.chainname and i_store_name = store.store_name);
+
+elseif i_item_type is null then 
+insert into customer_view_store_items_result 
+(select chain_item.chainitemname, chain_item.orderlimit from 
+chain_item join item on chain_item.chainitemname = item.itemname 
+join store on chain_item.chainname = store.chainname
+where store.zipcode = (select zipcode from users where i_username = username) and i_chain_name = store.chainname and i_store_name = store.store_name);
+
+else insert into customer_view_store_items_result 
+(select chain_item.chainitemname, chain_item.orderlimit from chain_item join item on chain_item.chainitemname = item.itemname join store on chain_item.chainname = store.chainname
+where store.zipcode = (select zipcode from users where i_username = username) and i_chain_name = store.chainname and i_store_name = store.store_name);
+end if;
 
 -- End of solution
 END //
