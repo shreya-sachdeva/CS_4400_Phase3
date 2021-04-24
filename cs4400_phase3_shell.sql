@@ -426,22 +426,6 @@ CREATE PROCEDURE customer_view_order_history(
 BEGIN
 -- Type solution below
 
-
-    
-    
---     if i_username in (select customerusername from orders) and i_orderid in (select orders.id from orders) then
---     set 
---     @total = (select contains.quantity * chain_item.price from contains join chain_item on contains.PLUNumber = chain_item.PLUNumber),
---     @total_items = (select count(contains.PLUNumber) from contains where i_orderid = OrderID group by orderid),
---     @date = (select orders.OrderDate from orders where i_orderid = orders.id),
---     @droneid = (select orders.DroneID from orders where i_orderid = orders.id),
---     @tech = (select drone.DroneTech from drone join orders on orders.droneid = drone.id where i_orderid = orders.orderid),
---     @status = (select drone.DroneStatus from drone join orders on orders.droneid = drone.id where i_orderid = orders.orderid);
---     
--- 	INSERT INTO customer_view_order_history_result 
---     values (@total, @total_items, @date, @droneid, @tech, @status);
---     end if;
-    
 	drop table if exists customer_view_order_history_result;
     create table customer_view_order_history_result(
     total_amount varchar(50),
@@ -451,14 +435,18 @@ BEGIN
     dronetech varchar(40), 
     orderstatus varchar(40));
     
+    if i_username in (select customerusername from orders where id = i_orderid) then
     INSERT INTO customer_view_order_history_result
-    select contains.quantity * chain_item.price, count(contains.PLUNumber), orders.OrderDate, orders.DroneID, drone.DroneTech, drone.DroneStatus 
-    from contains join chain_item on contains.PLUNumber = chain_item.PLUNumber 
-    join Orders on contains.OrderID = orders.ID 
-    join drone on orders.DroneID = drone.ID 
-	where i_username = orders.CustomerUsername and i_orderid = orders.ID
-    group by contains.plunumber,orders.id;
+    select sum(c.quantity * ci.price), sum(c.quantity), o.OrderDate, o.DroneID, d.DroneTech, o.orderstatus 
+    from contains as c join chain_item as ci on c.itemname = ci.chainitemname and c.chainname = ci.chainname
+    join orders as o on o.id = c.orderid
+    join drone as d on d.id = o.droneid
+    where i_username = o.customerusername and i_orderid = o.id;
     
+--     else
+--     INSERT INTO customer_view_order_history_result
+--     values(null,null,null,null,null,null);
+    end if;
 
 
 -- End of solution
@@ -527,7 +515,26 @@ CREATE PROCEDURE customer_select_items(
 )
 BEGIN
 -- Type solution below
+IF i_username in (select username from customer) and i_item_name in (select chainitemname FROM chain_item WHERE chainname = i_chain_name) then
+SET @zip = (select zipcode from users where username = i_username) ;
 
+if i_store_name in (select storename from store where chainname = i_chain_name and zipcode = @zip) then
+if i_quantity < (SELECT quantity FROM chain_item WHERE chainname = i_chain_name and chainitemname = i_item_name) then
+
+-- if an order is underway aka if there is an w status creating with username as given
+if (SELECT ID FROM orders where customerusername = i_username and orderstatus LIKE 'Creating') IS NULL THEN -- order doesnt exist yet, create order
+SET @new_ID = (SELECT max(ID)+1 from orders);
+INSERT into orders value (@new_ID, 'Creating', CURDATE(), i_username, NULL); 
+
+end if;
+SET @ID = (SELECT ID from orders where orderstatus LIKE 'Creating' and customerusername = i_username);
+SET @plu = (SELECT plunumber FROM chain_item WHERE chainname = i_chain_name AND chainitemname = i_item_name);
+
+INSERT INTO CONTAINS VALUE (@ID, i_item_name, i_chain_name, @plu, i_quantity);
+
+end if;
+end if;
+end if;
 -- End of solution
 END //
 DELIMITER ;
@@ -542,6 +549,18 @@ CREATE PROCEDURE customer_review_order(
 )
 BEGIN
 -- Type solution below
+
+drop table if exists customer_review_order_result;
+create table customer_review_order_result(
+	ItemName varchar(40),
+    Quantity int,
+    Price varchar(50));
+
+insert into customer_review_order_result
+(select c.ItemName, c.Quantity, ci.price from contains as c
+ join orders as o on c.orderid = o.id 
+ join chain_item as ci on ci.chainitemname = c.itemname and ci.chainname = c.chainname 
+where i_username = o.customerusername and c.orderid = o.id and o.orderstatus = "creating");
 
 -- End of solution
 END //
@@ -560,6 +579,26 @@ CREATE PROCEDURE customer_update_order(
 )
 BEGIN
 -- Type solution below
+
+
+if (select customerusername from orders as o join contains as c on o.id = c.orderid where i_item_name = c.itemname and i_username = customerusername) then
+set @item = (select c.itemname from orders as o join contains as c on o.id = c.orderid where i_item_name = c.itemname and i_username = customerusername),
+	@id = (select o.id from orders as o join contains as c on o.id = c.orderid where i_item_name = c.itemname and i_username = customerusername),
+	@customer = (select customerusername from orders as o join contains as c on o.id = c.orderid where i_item_name = c.itemname and i_username = customerusername);
+end if;
+
+if i_username in (select customerusername from orders as o join contains as c on o.id = c.orderid where i_item_name = c.itemname and i_username = customerusername and o.orderstatus = "Creating") and (i_quantity not like '0') then
+	update contains
+ 	set quantity = i_quantity
+ 	where itemname in (select * from (select c.itemname from orders as o join contains as c on o.id = c.orderid where i_item_name = c.itemname and i_username = customerusername)tblTmp) and orderid in (select * from (select o.id from orders as o join contains as c on o.id = c.orderid where i_item_name = c.itemname and i_username = customerusername)tblTmp);
+
+elseif i_username in (select customerusername from orders as o join contains as c on o.id = c.orderid where i_item_name = c.itemname and i_username = customerusername and o.orderstatus = "Creating") and (i_quantity like '0') then
+	delete from contains 
+	where itemname in (select * from (select c.itemname from orders as o join contains as c on o.id = c.orderid where i_item_name = c.itemname and i_username = customerusername)tblTmp) and orderid in (select * from (select o.id from orders as o join contains as c on o.id = c.orderid where i_item_name = c.itemname and i_username = customerusername)tblTmp);
+-- else
+	-- select customerusername from orders as o join contains as c on o.id = c.orderid where i_item_name = c.itemname and i_username = customerusername;
+
+end if;
 
 -- End of solution
 END //
