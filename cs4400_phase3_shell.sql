@@ -471,21 +471,7 @@ create table customer_view_store_items_result(
 	chainitemname varchar(40),
     orderlimit int);
 
-if i_item_type = "ALL" then 
-insert into customer_view_store_items_result 
-(select chain_item.chainitemname, chain_item.orderlimit from 
-chain_item inner join item on chain_item.chainitemname = item.itemname 
-inner join store on chain_item.chainname = store.chainname
-where store.zipcode = (select zipcode from users where i_username = username) and i_chain_name = store.chainname and i_store_name = store.storename);
-
-elseif i_item_type = "all" then 
-insert into customer_view_store_items_result 
-(select chain_item.chainitemname, chain_item.orderlimit from 
-chain_item inner join item on chain_item.chainitemname = item.itemname 
-inner join store on chain_item.chainname = store.chainname
-where store.zipcode = (select zipcode from users where i_username = username) and i_chain_name = store.chainname and i_store_name = store.storename);
-
-elseif i_item_type = null then 
+if i_item_type in ("ALL", "All", "all", null) then 
 insert into customer_view_store_items_result 
 (select chain_item.chainitemname, chain_item.orderlimit from 
 chain_item inner join item on chain_item.chainitemname = item.itemname 
@@ -580,24 +566,14 @@ CREATE PROCEDURE customer_update_order(
 BEGIN
 -- Type solution below
 
+if i_quantity > 0 then 
+update contains
+set quantity = i_quantity 
+where itemname = i_item_name and orderid = (select id from orders where customerusername = i_username and orderstatus = "creating" and droneid is null);
 
-if (select customerusername from orders as o join contains as c on o.id = c.orderid where i_item_name = c.itemname and i_username = customerusername) then
-set @item = (select c.itemname from orders as o join contains as c on o.id = c.orderid where i_item_name = c.itemname and i_username = customerusername),
-	@id = (select o.id from orders as o join contains as c on o.id = c.orderid where i_item_name = c.itemname and i_username = customerusername),
-	@customer = (select customerusername from orders as o join contains as c on o.id = c.orderid where i_item_name = c.itemname and i_username = customerusername);
-end if;
-
-if i_username in (select customerusername from orders as o join contains as c on o.id = c.orderid where i_item_name = c.itemname and i_username = customerusername and o.orderstatus = "Creating") and (i_quantity not like '0') then
-	update contains
- 	set quantity = i_quantity
- 	where itemname in (select * from (select c.itemname from orders as o join contains as c on o.id = c.orderid where i_item_name = c.itemname and i_username = customerusername)tblTmp) and orderid in (select * from (select o.id from orders as o join contains as c on o.id = c.orderid where i_item_name = c.itemname and i_username = customerusername)tblTmp);
-
-elseif i_username in (select customerusername from orders as o join contains as c on o.id = c.orderid where i_item_name = c.itemname and i_username = customerusername and o.orderstatus = "Creating") and (i_quantity like '0') then
-	delete from contains 
-	where itemname in (select * from (select c.itemname from orders as o join contains as c on o.id = c.orderid where i_item_name = c.itemname and i_username = customerusername)tblTmp) and orderid in (select * from (select o.id from orders as o join contains as c on o.id = c.orderid where i_item_name = c.itemname and i_username = customerusername)tblTmp);
--- else
-	-- select customerusername from orders as o join contains as c on o.id = c.orderid where i_item_name = c.itemname and i_username = customerusername;
-
+else
+delete from contains
+where itemname = i_item_name and orderid = (select id from orders where customerusername = i_username and orderstatus = "creating" and droneid is null);
 end if;
 
 -- End of solution
@@ -618,6 +594,28 @@ CREATE PROCEDURE drone_technician_view_order_history(
 BEGIN
 -- Type solution below
 
+	drop table if exists drone_technician_view_order_history_result;
+    create table drone_technician_view_order_history_result(
+		order_id varchar(40),
+        operator varchar(40),
+        i_date DATE,
+        drone_id varchar(40),
+        status varchar(40),
+        total varchar(40));
+        
+	insert into drone_technician_view_order_history_result
+    select o.id as ID, concat(u.firstname, " ", u.lastname) as Operator, o.orderdate as Date, o.droneid as 'Drone ID', o.orderstatus as Status, sum(c.quantity * ci.price) as Total from orders as o
+    left outer join drone as d on o.droneid = d.id 
+    left outer join contains as c on o.id = c.orderid
+    left outer join chain_item as ci on c.itemname = ci.chainitemname and c.chainname = ci.chainname
+    left outer join customer as cu on cu.username = o.customerusername
+    left outer join users as u on d.dronetech = u.username
+    left outer join drone_tech as dt on d.dronetech = dt.username
+    left outer join store as s on dt.storename = s.storename and dt.chainname = s.chainname
+    where (o.orderdate between i_start_date and i_end_date) and (i_username in (select username from drone_tech)) 
+    and o.customerusername in (select o.customerusername from contains as c join orders as o on c.orderid = o.id where chainname in (select chainname from drone_tech where username = i_username) and customerusername in (select username from users where zipcode = (select zipcode from users where username = i_username)) group by o.id)
+    group by o.id;
+    
 -- End of solution
 END //
 DELIMITER ;
@@ -635,7 +633,19 @@ CREATE PROCEDURE dronetech_assign_order(
 )
 BEGIN
 -- Type solution below
+if i_status is null then
+SET @stat = 'Drone Assigned';
+else
+SET @stat = i_status;
+end if;
 
+if i_username in (SELECT username from drone_tech) AND i_orderid in (SELECT id from orders) then
+if ((SELECT droneid from orders where id = i_orderid) = i_droneid OR (SELECT droneid from orders where id = i_orderid) IS NULL) THEN
+UPDATE DRONE SET dronestatus = 'Busy' WHERE dronetech = i_username AND ID = i_droneid;
+UPDATE ORDERS SET droneid = i_droneid, orderstatus = @stat where id = i_orderid;
+
+end if;
+end if;
 -- End of solution
 END //
 DELIMITER ;
@@ -652,6 +662,30 @@ CREATE PROCEDURE dronetech_order_details(
 BEGIN
 -- Type solution below
 
+drop table if exists dronetech_order_details_result;
+create table dronetech_order_details_result(
+	Customer_Name varchar(50),
+    Order_ID varchar(50), 
+    Total_Amount varchar(50), 
+    Total_Items varchar(50), 
+    Date_of_purchase date, 
+    Drone_ID varchar(50), 
+    Store_Associate varchar(50), 
+    Order_Status varchar(50), 
+    Address varchar (200));
+    
+insert into dronetech_order_details_result
+select concat(customer_info.FirstName, " ", customer_info.LastName), o.ID, sum(ci.price * c.Quantity), sum(c.Quantity), OrderDate, d.ID, 
+concat(associate.FirstName, ' ', associate.LastName), OrderStatus, concat(customer_info.Street, ", ", customer_info.City, ", ", customer_info.State, " ", customer_info.Zipcode)
+from orders as o 
+join contains as c on o.ID = c.OrderID
+join chain_item as ci on c.ItemName = ci.ChainItemName and c.ChainName = ci.ChainName
+join drone as d on o.DroneID = d.ID
+join users as customer_info on customer_info.Username = o.CustomerUsername
+join users as associate on associate.Username = d.DroneTech
+where i_username = d.DroneTech and i_orderid = o.ID 
+group by customer_info.username, o.id;
+    
 -- End of solution
 END //
 DELIMITER ;
@@ -669,6 +703,16 @@ CREATE PROCEDURE dronetech_order_items(
 BEGIN
 -- Type solution below
 
+drop table if exists dronetech_order_items_result;
+create table dronetech_order_items_result(
+	Item varchar(50), 
+    Count int);
+    
+insert into dronetech_order_items_result
+(select contains.ItemName, contains.quantity from contains 
+join orders on contains.OrderID = orders.ID 
+where i_orderid = contains.orderID);
+
 -- End of solution
 END //
 DELIMITER ;
@@ -685,7 +729,25 @@ CREATE PROCEDURE dronetech_assigned_drones(
 )
 BEGIN
 -- Type solution below
+drop table if exists dronetech_assigned_drones_result;
+create table dronetech_assigned_drones_result(
+	Drone_ID int,
+    Drone_Status varchar(50),
+    Radius int);
+    
+if i_status in ("ALL", "All", "all", null) then
+insert into dronetech_assigned_drones_result
+(select Drone.ID, Drone.DroneStatus, Drone.Radius from Drone 
+join Drone_Tech on Drone.DroneTech = Drone_Tech.Username 
+where i_username = Drone.DroneTech);
 
+else 
+insert into dronetech_assigned_drones_result
+(select Drone.ID, Drone.DroneStatus, Drone.Radius from Drone 
+join Drone_Tech on Drone.DroneTech = Drone_Tech.Username 
+where i_username = Drone.DroneTech and i_status = drone.droneStatus);
+    
+end if;
 -- End of solution
 END //
 DELIMITER ;
